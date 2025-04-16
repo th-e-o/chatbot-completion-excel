@@ -1,0 +1,18 @@
+# R/RStudio
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+*.Rproj
+
+# Données sensibles/temp
+*.xlsx
+*.pdf
+*.docx
+*.msg
+*.log
+*.tmp
+.DS_Store
+
+# Shiny
+shinyapps/

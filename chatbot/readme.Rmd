@@ -1,0 +1,224 @@
+---
+title: "readme"
+output: html_document
+---
+
+Introduction
+
+BudgiBot a pour objectif de faciliter le traitement et l'extraction de données budgétaires à partir de diverses sources, telles que :
+
+    Des messages envoyés via une interface de chat.
+
+    Des fichiers Excel contenant des informations budgétaires.
+
+    Des fichiers JSON (décrivant par exemple la structure d'un classeur Excel ou des tags pour le mapping).
+
+Le bot utilise une API LLM (Mistral) pour analyser le texte, extraire un tableau JSON structuré des données budgétaires et effectuer un mapping automatique entre les axes budgétaires et les cellules d’un fichier Excel.
+Architecture du projet
+
+Le projet est structuré en plusieurs modules et fichiers, chacun assurant une partie spécifique de la logique de l'application.
+global_chatbot.R
+
+    Rôle :
+    Ce fichier initialise les variables globales utilisées par l'application, notamment la clé API (MISTRAL_API_KEY) qui sera utilisée par les modules d'interaction avec l'API Mistral.
+
+    Contenu :
+
+        Définition de la variable mistral_api_key.
+
+        Autres configurations globales éventuellement nécessaires.
+
+Module API / Traitement JSON (api_mistral.R ou mod_json_helper.R)
+
+    Rôle :
+    Regrouper toutes les fonctions qui interagissent avec l'API Mistral et qui traitent le texte renvoyé (nettoyage, extraction du bloc JSON, conversion en objet R).
+
+    Fonctions principales :
+
+        get_mistral_response():
+        Construit un prompt à partir de l'historique de conversation, envoie la requête à l'API LLM et renvoie le contenu textuel de la réponse.
+
+        analyze_labels():
+        Envoie une requête à l'API pour analyser une liste de labels et retourner un objet JSON contenant les axes et un contexte général.
+
+        get_budget_data():
+        Fonction unifiée pour extraire des données budgétaires. Elle construit dynamiquement le prompt système selon que des axes sont fournis ou non, interroge l'API et renvoie le tableau JSON converti en objet R.
+
+        extract_json_array():
+        Parcourt le texte renvoyé pour en extraire un bloc débutant par [ et se terminant par ], correspondant au tableau JSON attendu.
+
+Module Mesures Cat (mod_mesures_cat.R)
+
+    Rôle :
+    Gérer l'importation, l'affichage, l'édition et l'exportation d'un fichier Excel contenant des mesures ou catégories budgétaires.
+
+    Fonctions :
+
+        mod_mesures_cat_ui():
+        Interface utilisateur pour charger un fichier Excel, sélectionner une feuille, afficher le tableau et offrir des options de modification/export.
+
+        mod_mesures_cat_server():
+        Logique serveur pour :
+
+            Charger le fichier Excel et extraire la liste des feuilles.
+
+            Afficher la feuille sélectionnée dans un tableau interactif (via reactable).
+
+            Permettre l'édition en mode plein écran (via rhandsontable).
+
+            Exporter le tableau modifié en fichier Excel.
+
+Helper d'extraction budgétaire (helper_budget_extraction.R)
+
+    Rôle :
+    Orchestrer tout le processus d'extraction budgétaire depuis l'interface utilisateur jusqu'à l'appel à l'API.
+
+    Fonction principale :
+
+        setupBudgetExtraction():
+
+            Observe le clic de l'utilisateur sur le bouton d'extraction.
+
+            Récupère le message utilisateur concerné via get_user_message_for_extraction().
+
+            Appelle de manière asynchrone get_budget_data() pour extraire un tableau JSON.
+
+            Effectue un mapping automatique en ajoutant la colonne "CelluleCible" (en se basant sur des tags présents dans un JSON importé).
+
+            Met à jour le data frame réactif contenant les données budgétaires extraites et affiche un modal pour valider le mapping.
+
+Module JSON Helper (mod_json_helper.R)
+
+    Rôle :
+    Gérer l'importation, le rechargement et l'analyse des fichiers JSON utilisés dans l'application.
+
+    Fonctions :
+
+        mod_json_helper_ui():
+        Permet de charger un fichier JSON, de le recharger, d’en prévisualiser le contenu et d’afficher les résultats de l’analyse (labels et axes) dans une fenêtre modale.
+
+        mod_json_helper_server():
+
+            Importation du fichier JSON via fileInput.
+
+            Lecture du JSON avec jsonlite::fromJSON.
+
+            Extraction des labels (et éventuellement d'autres éléments comme les tags) et stockage dans rv$extracted_labels pour usage ultérieur.
+
+Server principal (server.R)
+
+    Rôle :
+    Intègre tous les modules précédents et gère l'interface utilisateur globale ainsi que les interactions du chat.
+
+    Fonctions principales :
+
+        Initialisation des variables réactives (historique de chat, données extraites, etc.).
+
+        Appels aux modules (mesures, BPSS, JSON, extraction budgétaire).
+
+        Gestion des interactions dans le chat (envoi de message utilisateur, téléchargement de l'historique, rendu du chat).
+
+        Observation des clics sur des boutons pour déclencher des actions (extraction budgétaire, rechargement JSON, validation du mapping, etc.).
+
+        Affichage d'un modal pour la validation et correction du mapping des données budgétaires extraites.
+
+Flux de traitement
+
+Le processus global de BudgiBot suit les étapes suivantes :
+
+    Interaction initiale et envoi de messages :
+    L'utilisateur envoie un message via l'interface de chat ou charge un fichier (Excel ou JSON).
+    Ces données sont stockées dans un historique de conversation.
+
+    Analyse du fichier Excel ou JSON :
+
+        Dans le cas d'un fichier Excel, le module mesures_cat lit le fichier, permet de sélectionner une feuille et affiche le contenu dans un tableau interactif.
+
+        Dans le cas d'un fichier JSON, le module JSON Helper importe le fichier, extrait et prévisualise son contenu, et extrait des labels (et potentiellement des axes).
+
+    Extraction budgétaire :
+    Lorsque l'utilisateur déclenche l'extraction (via un bouton d'extraction), le module helper_budget_extraction récupère le message ciblé et appelle get_budget_data pour interroger l'API Mistral.
+    Le prompt est construit dynamiquement en fonction du message et des axes (s'ils existent).
+    La réponse de l'API est nettoyée, le bloc JSON est extrait et converti en objet R (data frame ou liste).
+
+    Mapping automatique :
+    Une fois les données budgétaires extraites, un mapping automatique est effectué pour associer chaque axe détecté à une cellule cible en se basant sur un JSON importé (tags).
+    Les données mappées sont mises à jour dans le data frame réactif.
+
+    Validation et édition :
+    Un modal s'affiche avec un tableau interactif pour permettre à l'utilisateur de vérifier et corriger le mapping.
+    Le tableau peut être modifié directement en ligne, puis exporté ou sauvegardé.
+
+    Mise à jour globale du chat :
+    Les mises à jour du mapping et des données extraites sont intégrées dans l'historique du chat et affichées à l'utilisateur, qui peut télécharger l'historique complet si nécessaire.
+
+Dépendances
+
+Le projet utilise plusieurs packages R, notamment :
+
+    shiny : Pour la création de l'interface utilisateur interactive.
+
+    DT et reactable : Pour l'affichage des tableaux interactifs.
+
+    jsonlite : Pour la lecture et l'écriture de JSON.
+
+    httr : Pour communiquer avec l'API Mistral.
+
+    readxl : Pour lire les fichiers Excel.
+
+    rhandsontable : Pour proposer un tableau éditable en mode plein écran.
+
+    openxlsx2 : Pour l'exportation vers Excel.
+
+    future et promises : Pour la gestion des appels asynchrones à l'API.
+
+Instructions d'installation et d'utilisation
+
+    Configuration de l'environnement :
+
+        Assurez-vous d'installer les packages nécessaires via install.packages().
+
+        Définissez la variable MISTRAL_API_KEY dans le fichier global_chatbot.R ou via un fichier .Renviron.
+
+    Organisation des fichiers :
+
+        Placez les fichiers suivants dans votre projet :
+
+            global_chatbot.R
+
+            api_mistral.R ou mod_json_helper.R
+
+            mod_mesures_cat.R
+
+            helper_budget_extraction.R
+
+            server.R
+
+            Le(s) fichier(s) UI (par exemple, ui.R ou intégré dans app.R).
+
+    Lancement en local :
+
+        Ouvrez RStudio et sourcez le fichier global_chatbot.R.
+
+        Ensuite, lancez l'application avec shinyApp(ui = ui, server = server) ou ouvrez le fichier app.R si vous l'avez configuré ainsi.
+
+    Utilisation :
+
+        Chargez un fichier Excel ou JSON selon vos besoins.
+
+        Envoyez des messages dans le chat ou utilisez les boutons d'extraction, de rechargement, etc.
+
+        Validez les mappings via le modal qui s'affiche.
+
+        Téléchargez l'historique du chat si nécessaire.
+
+Notes et améliorations futures
+
+    Robustesse du traitement JSON :
+    Vous pouvez améliorer la fonction extract_json_array pour gérer des cas de structures imbriquées ou de textes parasite.
+
+    Gestion avancée des erreurs :
+    Ajouter plus de messages de débogage et de gestion d'erreur afin d'informer l'utilisateur en cas de problèmes lors des appels API ou du traitement des fichiers.
+
+    Modularisation accrue :
+    Une documentation interne et une structure plus modulaire aideront à maintenir et étendre l'application.
